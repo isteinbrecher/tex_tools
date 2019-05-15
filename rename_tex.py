@@ -4,131 +4,163 @@ Replace commands in a latex document.
 """
 
 
-
+# Import python modules.
 import re
 import os
+import argparse
+from termcolor import colored
 
 
-class LaTeXCommand(object):
+# Global variables.
+ROOT_DIRECTORY = ''
 
 
-    def __init__(self, match, i_line):
-        self.i_line = i_line
-
-
-        print(dir(match))
-        print(match)
-        print(match.start)
-        print(match.span)
-
-        #self.i_char = i_char
-
-
-
-
-def split_relevant_line(line):
-    relevant_char = []
-    comment_char = []
-    prev_char = ''
-    is_comment = False
-    for i, char in enumerate(line):
-        if (is_comment == False and (char == '%' and not prev_char == '\\')):
-            # Comment ends this line.
-            is_comment = True
-        prev_char = char
-
-        if not is_comment:
-            relevant_char.append(char)
-        else:
-            comment_char.append(char)
-
-
-    return [''.join(relevant_char), ''.join(comment_char)]
-
-
-def get_relevant_line(line):
-    return split_relevant_line(line)[0]
-
-
-
-def line_to_include(line):
-    line_short = get_relevant_line(line)
+def get_includes(line):
+    """Check if this line has an include or input command."""
     paths = []
-    for match in re.finditer(r'\\(include|input) *\{.*}', line_short):
+    pattern = r'\\(include|input) *\{.*}'
+    for match in re.finditer(pattern, line):
         string = match.string
         file = string.split('{')[1].split('}')[0]
         paths.append(file)
     return paths
 
 
+def get_commands_in_string(string, command):
+    """Return all matches for command in string."""
+
+    pattern = r'\\({})([^a-zA-Z]|$)'.format(command)
+    return list(re.finditer(pattern, string))
 
 
-def lines_to_include_command(lines):
+def split_line_comment(line):
+    """Split the line into a code and comment part."""
 
-    includes = []
-    for line in lines:
-        includes.extend(line_to_include(line))
-    return includes
-
+    # Search for a comment in the middle of the line.
+    pattern = r'(^|[^\\])%'
+    match = re.search(pattern, line)
+    if match:
+        split_index = list(match.span())[1] - 1
+        return [line[:split_index], line[split_index:]]
+    return [line, '']
 
 
 class LaTeXFile(object):
+    """
+    This class represents a single tex file.
+    """
 
-    def __init__(self, path, name):
+    def __init__(self, path, *, recursive=False):
+        """
+        Set up the file, and load the contents to a list.
+        """
 
-        # Get lines in the file.
-        self.changed = False
-        self.path = os.path.join(path, name)
-        self.lines = [line for line in open(self.path)]
-        includes = lines_to_include_command(self.lines)
+        # Get the full file path.
+        if os.path.isabs(path):
+            self.path = path
+        else:
+            self.path = os.path.join(ROOT_DIRECTORY, path)
 
+        self.lines = [split_line_comment(line.rstrip('\n'))
+            for line in open(self.path)]
         self.includes = []
-        for include_path in includes:
-            self.includes.append(LaTeXFile(path, include_path))
 
+        # Flag if something in the file changed.
+        self._changed = False
 
-    def replace(self, command_name, command_name_new):
+        if recursive:
+            # Get all include paths.
+            paths = []
+            for line, _comment in self.lines:
+                paths.extend(get_includes(line))
 
-        self.new_lines = []
-        for line in self.lines:
+            # Create the sub files.
+            for path in paths:
+                self.includes.append(LaTeXFile(path, recursive=recursive))
 
-            line_split = split_relevant_line(line)
+    def replace(self, command_name, command_name_new, *, dry_run=True,
+            verbose=True):
+        """
+        Replace a command name in this file and all subfiles.
+        """
 
-            # This space will be removed later.
-            line_new = line_split[0] + ' '
+        if verbose:
+            print('{}'.format(os.path.relpath(self.path, ROOT_DIRECTORY)))
 
+        new_lines = []
+        for i, [line, comment] in enumerate(self.lines):
+            matches = get_commands_in_string(line, command_name)
 
-            search_text = '\\\\({})[^a-zA-Z]'.format(command_name)
+            # Get a list with the line split up between the replacement parts.
+            old_parts = []
+            start_index = 0
+            for match in reversed(matches):
+                span = match.span()
+                old_parts.append(line[start_index:span[0]])
+                if span[1] - span[0] - len(command_name) == 2:
+                    start_index = span[1] - 1
+                else:
+                    start_index = span[1]
+            old_parts.append(line[start_index:])
 
-            for match in reversed(list(re.finditer(search_text, line_new))):
-                span = list(match.span(0))
-                line_new = line_new[:span[0]] + '\\' + command_name_new + line_new[span[1]-1:]
-                self.changed = True
+            if verbose and len(matches) > 0:
+                old_string = '\\{}'.format(
+                    colored(command_name, 'red')).join(old_parts)
+                new_string = '\\{}'.format(
+                    colored(command_name_new, 'green')).join(old_parts)
+                print('{} {}{}'.format(i + 1, old_string, comment))
+                print('{} {}{}'.format(i + 1, new_string, comment))
 
-            line_new = line_new[:-1]
+            # Replace the commands in reverse order.
+            if len(matches) > 0:
+                self._changed = True
+                new_lines.append(
+                    ['\\{}'.format(command_name_new).join(old_parts), comment])
+            else:
+                new_lines.append([line, comment])
 
-            line_split[0] = line_new
-
-            self.new_lines.append(''.join(line_split))
-
-        if self.changed:
+        if (not dry_run) and self._changed:
+            # Save the replaced file.
             with open(self.path, 'w') as file:
-                file.write(''.join(self.new_lines))
+                for line, comment in new_lines:
+                    file.write(line)
+                    file.write(comment)
+                    file.write(os.linesep)
 
         for subfile in self.includes:
-            subfile.replace(command_name, command_name_new)
+            subfile.replace(command_name, command_name_new, dry_run=dry_run,
+                verbose=verbose)
 
 
+if __name__ == '__main__':
+    # Execution part of script.
 
+    # Define the command line arguments.
+    parser = argparse.ArgumentParser(description=(
+        'Replace the name of a command in a whole tex document (also in '
+        + 'included files).'))
+    parser.add_argument('root_tex_path', help=('path to the root of the tex '
+            + 'document, where the command should be replaced'))
+    parser.add_argument('command_old', help='name of the command to replace')
+    parser.add_argument('command_new', help='name of the new command')
 
+    parser.add_argument('-r', '--recursive', action='store_true',
+        help='recursively go through included files')
+    parser.add_argument('-v', '--verbose', action='store_true',
+        help='increase output verbosity')
+    parser.add_argument('-d', '--dry-run', action='store_true',
+        help='do not change anything')
 
-path = '/home/ivo/unibw/06_Forschung/07_paper/beam-to-solid-paper/tex'
-name = 'beam-to-solid-paper.tex'
+    args = parser.parse_args()
 
+    # Get the full root document path.
+    if os.path.isabs(args.root_tex_path):
+        full_root_path = args.root_tex_path
+    else:
+        full_root_path = os.path.join(os.getcwd(), args.root_tex_path)
+    ROOT_DIRECTORY = os.path.dirname(full_root_path)
 
-file = LaTeXFile(path, name)
-file.replace('dWs', 'meins')
-
-
-
-
+    # Load the root document.
+    root = LaTeXFile(full_root_path, recursive=args.recursive)
+    root.replace(args.command_old, args.command_new, dry_run=args.dry_run,
+        verbose=args.verbose)
