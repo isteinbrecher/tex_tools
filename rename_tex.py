@@ -137,8 +137,8 @@ if __name__ == '__main__':
 
     # Define the command line arguments.
     parser = argparse.ArgumentParser(description=(
-        'Replace the name of a command in a whole tex document (also in '
-        + 'included files).'))
+        'Replace the name of a command in a whole tex document (optional also '
+        + 'in included files). Per default only the differences are shown.'))
     parser.add_argument('root_tex_path', help=('path to the root of the tex '
             + 'document, where the command should be replaced'))
     parser.add_argument('command_old', help='name of the command to replace')
@@ -146,10 +146,10 @@ if __name__ == '__main__':
 
     parser.add_argument('-r', '--recursive', action='store_true',
         help='recursively go through included files')
-    parser.add_argument('-v', '--verbose', action='store_true',
-        help='increase output verbosity')
-    parser.add_argument('-d', '--dry-run', action='store_true',
-        help='do not change anything')
+#    parser.add_argument('-v', '--verbose', action='store_true',
+#        help='increase output verbosity')
+    parser.add_argument('-p', '--perform', action='store_true',
+        help='actually replace the commands in the file, default is dry run')
 
     args = parser.parse_args()
 
@@ -162,5 +162,8 @@ if __name__ == '__main__':
 
     # Load the root document.
     root = LaTeXFile(full_root_path, recursive=args.recursive)
-    root.replace(args.command_old, args.command_new, dry_run=args.dry_run,
-        verbose=args.verbose)
+    root.replace(args.command_old, args.command_new, dry_run=not args.perform,
+        verbose=True)
+    if not args.perform:
+        print('This was a dry run. To actually replace the command names, set '
+            + 'the option -p')
