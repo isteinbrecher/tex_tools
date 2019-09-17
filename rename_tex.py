@@ -26,11 +26,24 @@ def get_includes(line):
     return paths
 
 
-def get_commands_in_string(string, command):
+def get_all_commands_in_string(string):
     """Return all matches for command in string."""
 
-    pattern = r'\\({})([^a-zA-Z]|$)'.format(command)
+    pattern = r'\\[a-zA-Z]*'
     return list(re.finditer(pattern, string))
+
+
+def get_command_in_string(string, command):
+    """Return all matches for command in string."""
+
+    all_commands = get_all_commands_in_string(string)
+    return_commands = []
+    for match in all_commands:
+        span = match.span()
+        found_name = string[span[0] + 1:span[1]]
+        if found_name == command:
+            return_commands.append(match)
+    return return_commands
 
 
 def split_line_comment(line):
@@ -89,18 +102,15 @@ class LaTeXFile(object):
 
         new_lines = []
         for i, [line, comment] in enumerate(self.lines):
-            matches = get_commands_in_string(line, command_name)
+            matches = get_command_in_string(line, command_name)
 
             # Get a list with the line split up between the replacement parts.
             old_parts = []
             start_index = 0
-            for match in reversed(matches):
+            for match in matches:
                 span = match.span()
                 old_parts.append(line[start_index:span[0]])
-                if span[1] - span[0] - len(command_name) == 2:
-                    start_index = span[1] - 1
-                else:
-                    start_index = span[1]
+                start_index = span[1]
             old_parts.append(line[start_index:])
 
             if verbose and len(matches) > 0:
