@@ -40,6 +40,7 @@ def get_command_in_string(string, command):
             return_commands.append(match)
     return return_commands
 
+
 def split_line_comment(line):
     """Split the line into a code and comment part."""
 
