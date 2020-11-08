@@ -13,7 +13,7 @@ from termcolor import colored
 def get_includes(line):
     """Check if this line has an include or input command."""
     paths = []
-    pattern = r'\\(include|input) *\{.*}'
+    pattern = r'\\(include|input) *\{.*\}'
     for match in re.finditer(pattern, line):
         string = match.string
         file = string.split('{')[1].split('}')[0]
