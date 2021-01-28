@@ -207,9 +207,12 @@ class LaTeXFile(object):
             if command in defined_commands.keys():
                 defined_commands[command][2] += 1
 
+        last_file = ''
         for key, [file, line, count] in defined_commands.items():
             if count == 1:
-                print('{} defined in {} is never used'.format(
-                    colored(key, 'red'),
-                    colored('{}::{}'.format(file, line), 'green')))
-
+                if last_file != file:
+                    print(colored('{}'.format(file), 'green'))
+                    last_file = file
+                print('  {}: {} is never used'.format(
+                    line,
+                    colored(key, 'red')))
