@@ -139,3 +139,77 @@ class LaTeXFile(object):
         for subfile in self.includes:
             subfile.replace(command_name, command_name_new, dry_run=dry_run,
                 verbose=verbose)
+
+    def _get_defined_commands(self):
+        """
+        Return all commands that are defined in this document or an included
+        file.
+        """
+
+        defined_commands = []
+        for i, [line, _comment] in enumerate(self.lines):
+            for command_name in ['newcommand', 'renewcommand']:
+                matches = get_command_in_string(line, command_name)
+                if len(matches) > 1:
+                    raise ValueError('Multiple defined commands per line not '
+                        'implemented yet')
+                elif len(matches) == 1:
+                    # Get the text after the command definition.
+                    match = matches[0]
+                    line_after_command = line[match.span()[1]:]
+                    start = line_after_command.find('{')
+                    end = line_after_command.find('}')
+                    if (start == -1 or end == -1):
+                        raise ValueError('Could not find defined command name')
+                    defined_commands.append([
+                        line_after_command[start + 1:end],
+                        self.path,
+                        i
+                        ])
+
+        for subfile in self.includes:
+            defined_commands.extend(subfile._get_defined_commands())
+
+        return defined_commands
+
+    def _get_commands(self):
+        """
+        Return all commands that are used in this document or an included file.
+        """
+
+        used_commands = []
+        for _i, [line, _comment] in enumerate(self.lines):
+            matches = get_all_commands_in_string(line)
+            for match in matches:
+                span = match.span()
+                used_commands.append(line[span[0]:span[1]])
+
+        for subfile in self.includes:
+            used_commands.extend(subfile._get_commands())
+
+        return used_commands
+
+    def check_unused_defined_commands(self):
+        """
+        Check if there are defined commands in this document which are not
+        used.
+        """
+
+        defined_commands = {}
+        for [command, file, line] in self._get_defined_commands():
+            if command in defined_commands.keys():
+                raise ValueError('Command defined twice')
+            else:
+                defined_commands[command] = [file, line, 0]
+
+        used_commands = self._get_commands()
+        for command in used_commands:
+            if command in defined_commands.keys():
+                defined_commands[command][2] += 1
+
+        for key, [file, line, count] in defined_commands.items():
+            if count == 1:
+                print('{} defined in {} is never used'.format(
+                    colored(key, 'red'),
+                    colored('{}::{}'.format(file, line), 'green')))
+
