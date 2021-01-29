@@ -198,7 +198,14 @@ class LaTeXFile(object):
         defined_commands = {}
         for [command, file, line] in self._get_defined_commands():
             if command in defined_commands.keys():
-                raise ValueError('Command defined twice')
+                raise ValueError(
+                    ('Command {} defined twice\n'
+                    '{}:{}\n{}:{}').format(
+                        command,
+                        defined_commands[command][0],
+                        defined_commands[command][1],
+                        file,
+                        line))
             else:
                 defined_commands[command] = [file, line, 0]
 
