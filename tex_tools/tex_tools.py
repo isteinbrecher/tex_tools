@@ -8,6 +8,7 @@ Replace commands in a latex document.
 import re
 import os
 from termcolor import colored
+import warnings
 
 
 def get_includes(line):
@@ -88,7 +89,12 @@ class LaTeXFile(object):
                     abs_path = path
                 else:
                     abs_path = os.path.join(os.path.dirname(self.path), path)
-                self.includes.append(LaTeXFile(abs_path, recursive=recursive))
+                if os.path.isfile(abs_path):
+                    self.includes.append(LaTeXFile(abs_path,
+                        recursive=recursive))
+                else:
+                    warnings.warn(('The included file "{}" could not be '
+                        'found').format(abs_path))
 
     def replace(self, command_name, command_name_new, *, dry_run=True,
             verbose=True):
